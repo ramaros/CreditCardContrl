@@ -8,6 +8,7 @@ import PurchaseForm from './components/PurchaseForm';
 import PurchaseList from './components/PurchaseList';
 import ImportExport from './components/ImportExport';
 import ReminderManager from './components/ReminderManager';
+import PinLockScreen from './components/PinLockScreen';
 import {
   CreditCard,
   Plus,
@@ -63,6 +64,41 @@ export default function App() {
 
   const [showPurchaseForm, setShowPurchaseForm] = useState(false);
   const [purchaseToEdit, setPurchaseToEdit] = useState<Purchase | null>(null);
+
+  // PIN lock protection state
+  const [pinEnabled, setPinEnabled] = useState(() => localStorage.getItem('parcelacard_pin_enabled') === 'true');
+  const [pinCode, setPinCode] = useState(() => localStorage.getItem('parcelacard_pin') || '');
+  const [isLocked, setIsLocked] = useState(() => {
+    const enabled = localStorage.getItem('parcelacard_pin_enabled') === 'true';
+    const pin = localStorage.getItem('parcelacard_pin') || '';
+    return enabled && pin.length === 4;
+  });
+
+  // Re-lock the app when page visibility changes (user locks screen or leaves tab)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const enabled = localStorage.getItem('parcelacard_pin_enabled') === 'true';
+        const pin = localStorage.getItem('parcelacard_pin') || '';
+        if (enabled && pin.length === 4) {
+          setIsLocked(true);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  const handleUpdatePin = (enabled: boolean, pin: string) => {
+    setPinEnabled(enabled);
+    setPinCode(pin);
+    localStorage.setItem('parcelacard_pin_enabled', String(enabled));
+    localStorage.setItem('parcelacard_pin', pin);
+    if (!enabled) {
+      setIsLocked(false);
+    }
+  };
+
 
   // Load data initially
   useEffect(() => {
@@ -790,6 +826,9 @@ export default function App() {
               onUpdateSyncId={handleUpdateSyncId}
               onForcePushCloud={handleForcePushCloud}
               onForcePullCloud={handleForcePullCloud}
+              pinEnabled={pinEnabled}
+              pinCode={pinCode}
+              onUpdatePin={handleUpdatePin}
             />
           )}
         </div>
@@ -843,6 +882,13 @@ export default function App() {
           Backup
         </button>
       </footer>
+
+      {isLocked && (
+        <PinLockScreen
+          onUnlock={() => setIsLocked(false)}
+          storedPin={pinCode}
+        />
+      )}
     </div>
   );
 }
