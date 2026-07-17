@@ -19,6 +19,7 @@ export interface Purchase {
   cardId: string;
   category?: string;
   createdAt: string;
+  paidInstallments?: number[]; // Installment numbers (1-indexed) that are marked as paid
 }
 
 export interface InstallmentInfo {
@@ -30,6 +31,7 @@ export interface InstallmentInfo {
   month: string; // Format: "YYYY-MM"
   cardId: string;
   category?: string;
+  isPaid?: boolean;
 }
 
 export interface AppData {

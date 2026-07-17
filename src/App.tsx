@@ -394,6 +394,26 @@ export default function App() {
     setShowPurchaseForm(true);
   };
 
+  const handleToggleInstallmentPaid = (purchaseId: string, installmentNumber: number) => {
+    const purchase = purchases.find((p) => p.id === purchaseId);
+    if (!purchase) return;
+
+    const paidInstallments = purchase.paidInstallments || [];
+    let updatedPaid: number[];
+    if (paidInstallments.includes(installmentNumber)) {
+      updatedPaid = paidInstallments.filter((num) => num !== installmentNumber);
+    } else {
+      updatedPaid = [...paidInstallments, installmentNumber];
+    }
+
+    const updatedPurchase = {
+      ...purchase,
+      paidInstallments: updatedPaid,
+    };
+
+    handleSavePurchase(updatedPurchase);
+  };
+
   // --- Backup Handlers ---
   const handleImportData = async (importedData: AppData) => {
     setCards(importedData.cards);
@@ -756,6 +776,7 @@ export default function App() {
                 selectedMonth={selectedMonth}
                 onEdit={handleEditPurchaseClick}
                 onDelete={handleDeletePurchase}
+                onToggleInstallmentPaid={handleToggleInstallmentPaid}
               />
             </div>
           )}

@@ -2,6 +2,7 @@ import React from 'react';
 import { Card } from '../types';
 import { formatCurrency } from '../utils/calculator';
 import { CreditCard, Eye, EyeOff, Calendar, AlertCircle } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
 
 interface CardWidgetProps {
   card: Card;
@@ -21,6 +22,7 @@ export default function CardWidget({
   isInteractive = true,
 }: CardWidgetProps & { key?: React.Key }) {
   const [showLimit, setShowLimit] = React.useState(true);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
 
   // Determine brand icon or generic credit card
   const getBrandLogo = () => {
@@ -145,16 +147,32 @@ export default function CardWidget({
             </button>
           )}
           {onDelete && (
-            <button
-              onClick={() => {
-                if (confirm(`Excluir o cartão "${card.name}" e todas as suas compras?`)) {
-                  onDelete(card.id);
+            <>
+              <button
+                onClick={() => setIsDeleteModalOpen(true)}
+                className="text-xs bg-red-500/20 hover:bg-red-500/45 text-red-100 px-2.5 py-1 rounded transition-colors font-medium cursor-pointer"
+              >
+                Excluir
+              </button>
+
+              <ConfirmModal
+                isOpen={isDeleteModalOpen}
+                onClose={() => setIsDeleteModalOpen(false)}
+                onConfirm={() => onDelete(card.id)}
+                title="Excluir Cartão?"
+                message={
+                  <span>
+                    Deseja excluir o cartão <strong className="text-slate-800">"{card.name}"</strong> permanentemente?
+                    <span className="text-red-500 font-semibold mt-1 block">
+                      Isso também removerá todas as compras associadas a ele. Esta ação não pode ser desfeita.
+                    </span>
+                  </span>
                 }
-              }}
-              className="text-xs bg-red-500/20 hover:bg-red-500/45 text-red-100 px-2.5 py-1 rounded transition-colors font-medium cursor-pointer"
-            >
-              Excluir
-            </button>
+                confirmText="Excluir Cartão"
+                cancelText="Cancelar"
+                variant="danger"
+              />
+            </>
           )}
         </div>
       )}

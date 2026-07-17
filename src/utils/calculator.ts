@@ -25,7 +25,7 @@ export function getFinalMonth(startMonthStr: string, installmentsCount: number):
  */
 export function getInstallmentsForPurchase(purchase: Purchase): InstallmentInfo[] {
   const installments: InstallmentInfo[] = [];
-  const { totalValue, installmentsCount, startMonth, id, description, cardId, category } = purchase;
+  const { totalValue, installmentsCount, startMonth, id, description, cardId, category, paidInstallments = [] } = purchase;
 
   if (installmentsCount <= 0) return [];
 
@@ -53,6 +53,7 @@ export function getInstallmentsForPurchase(purchase: Purchase): InstallmentInfo[
       month: installmentMonth,
       cardId,
       category,
+      isPaid: paidInstallments.includes(i),
     });
   }
 
