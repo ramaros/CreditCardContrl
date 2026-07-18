@@ -1,6 +1,0 @@
-{
-  "name": "Controle de Parcelas de Cartão",
-  "description": "Gerenciador de compras parceladas no cartão de crédito, com cálculo de parcelas, projeção de faturas futuras, exportação, importação e lembretes.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
