@@ -486,11 +486,16 @@ export default function App() {
               <CreditCard className="w-5.5 h-5.5 text-white transform -rotate-6" />
             </div>
             <div>
-              <h1 className="font-display font-black text-lg text-slate-900 tracking-tight leading-none">
-                Parcela<span className="text-indigo-600">Card</span>
-              </h1>
-              <span className="text-[10px] text-slate-400 font-medium tracking-wide uppercase">
-                Controle de Cartões
+              <div className="flex items-center gap-1.5">
+                <h1 className="font-display font-black text-lg text-slate-900 tracking-tight leading-none">
+                  Parcela<span className="text-indigo-600">Card</span>
+                </h1>
+                <span className="text-[9px] bg-emerald-500 text-white font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider animate-bounce">
+                  VERSÃO DO GIT ATIVA (v1.2)
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium tracking-wide uppercase block mt-0.5">
+                Controle de Cartões • Arquivo atualizado via Git!
               </span>
             </div>
           </div>
