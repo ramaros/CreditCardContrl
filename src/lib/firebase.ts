@@ -17,6 +17,17 @@ const isFirebaseConfigured = !!(
   firebaseConfig.appId
 );
 
+// Secure debug logging to help diagnose why it might fall back to Local Mode
+console.log('Verificação do Firebase:', {
+  isConfigured: isFirebaseConfigured,
+  hasApiKey: !!firebaseConfig.apiKey,
+  hasAuthDomain: !!firebaseConfig.authDomain,
+  hasProjectId: !!firebaseConfig.projectId,
+  hasStorageBucket: !!firebaseConfig.storageBucket,
+  hasMessagingSenderId: !!firebaseConfig.messagingSenderId,
+  hasAppId: !!firebaseConfig.appId,
+});
+
 let app;
 let db: any = null;
 
