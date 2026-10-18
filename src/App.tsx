@@ -6,7 +6,7 @@ import CardWidget from './components/CardWidget';
 import CardForm from './components/CardForm';
 import PurchaseForm from './components/PurchaseForm';
 import PurchaseList from './components/PurchaseList';
-import ImportExport from './components/ImportExport';
+import AccountSync from './components/AccountSync';
 import ReminderManager from './components/ReminderManager';
 import PinLockScreen from './components/PinLockScreen';
 import {
@@ -25,18 +25,8 @@ import {
   CloudOff,
   Database,
 } from 'lucide-react';
-import { isFirebaseConfigured } from './lib/firebase';
-import {
-  getOrCreateSyncId,
-  saveSyncId,
-  loadCards,
-  saveCard,
-  deleteCard,
-  loadPurchases,
-  savePurchase,
-  deletePurchase,
-  uploadAllDataToCloud,
-} from './lib/dbService';
+import { auth } from './lib/firebase';
+import { loadMyCards, loadMyPurchases, saveMyCard, saveMyPurchase, deleteMyCard, deleteMyPurchase, uploadMyData } from './lib/authDbService';
 
 export default function App() {
   // Navigation
@@ -52,10 +42,9 @@ export default function App() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
 
   // Cloud Sync State
-  const [syncId, setSyncId] = useState(getOrCreateSyncId);
-  const [cloudStatus, setCloudStatus] = useState<'connected' | 'disconnected' | 'error' | 'syncing'>(
-    isFirebaseConfigured ? 'syncing' : 'disconnected'
-  );
+  const uid = auth?.currentUser?.uid ?? '';
+  const cacheKey = (type: 'cards' | 'purchases') => `parcelacard_account_${uid}_${type}`;
+  const [cloudStatus, setCloudStatus] = useState<'connected' | 'disconnected' | 'error' | 'syncing'>('syncing');
 
   // Modals & Edits
   const [showCardForm, setShowCardForm] = useState(false);
@@ -100,353 +89,98 @@ export default function App() {
   };
 
 
-  // Load data initially
+  // Load only this authenticated account; never auto-import legacy records.
   useEffect(() => {
-    async function initData() {
-      if (isFirebaseConfigured) {
-        setCloudStatus('syncing');
+    let cancelled = false;
+    async function init() {
+      setCloudStatus('syncing');
+      try {
+        const [remoteCards, remotePurchases] = await Promise.all([loadMyCards(), loadMyPurchases()]);
+        if (cancelled) return;
+        setCards(remoteCards); setPurchases(remotePurchases);
+        localStorage.setItem(cacheKey('cards'), JSON.stringify(remoteCards));
+        localStorage.setItem(cacheKey('purchases'), JSON.stringify(remotePurchases));
+        setCloudStatus('connected');
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Falha ao carregar conta:', error);
+        setCloudStatus('error');
         try {
-          const cloudCards = await loadCards(syncId);
-          const cloudPurchases = await loadPurchases(syncId);
-          
-          if (cloudCards.length > 0) {
-            setCards(cloudCards);
-            setPurchases(cloudPurchases);
-            setCloudStatus('connected');
-            // Cache to localstorage as fallback
-            localStorage.setItem('parcelacard_cards', JSON.stringify(cloudCards));
-            localStorage.setItem('parcelacard_purchases', JSON.stringify(cloudPurchases));
-          } else {
-            // Firestore empty. Any local cards to upload?
-            const storedCards = localStorage.getItem('parcelacard_cards');
-            const storedPurchases = localStorage.getItem('parcelacard_purchases');
-            
-            if (storedCards && storedPurchases) {
-              const parsedCards = JSON.parse(storedCards);
-              const parsedPurchases = JSON.parse(storedPurchases);
-              setCards(parsedCards);
-              setPurchases(parsedPurchases);
-              
-              await uploadAllDataToCloud(syncId, parsedCards, parsedPurchases);
-              setCloudStatus('connected');
-            } else {
-              // Both empty, seed demo data!
-              const today = new Date();
-              const currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-              
-              const demoCards: Card[] = [
-                {
-                  id: 'card-demo-1',
-                  name: 'Nubank Roxo',
-                  brand: 'mastercard',
-                  dueDay: 12,
-                  limit: 6000,
-                  color: 'from-purple-600 to-indigo-700',
-                },
-                {
-                  id: 'card-demo-2',
-                  name: 'Inter Laranja',
-                  brand: 'visa',
-                  dueDay: 17,
-                  limit: 4500,
-                  color: 'from-orange-500 to-amber-600',
-                },
-              ];
-              
-              const demoPurchases: Purchase[] = [
-                {
-                  id: 'purch-demo-1',
-                  description: 'Geladeira Frost Free',
-                  totalValue: 2400,
-                  installmentsCount: 12,
-                  startMonth: addMonths(currentMonthStr, -2),
-                  cardId: 'card-demo-1',
-                  createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-                },
-                {
-                  id: 'purch-demo-2',
-                  description: 'Notebook de Trabalho',
-                  totalValue: 3600,
-                  installmentsCount: 10,
-                  startMonth: addMonths(currentMonthStr, -1),
-                  cardId: 'card-demo-2',
-                  createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-                },
-                {
-                  id: 'purch-demo-3',
-                  description: 'Compras Supermercado',
-                  totalValue: 450,
-                  installmentsCount: 3,
-                  startMonth: currentMonthStr,
-                  cardId: 'card-demo-1',
-                  createdAt: new Date().toISOString(),
-                },
-                {
-                  id: 'purch-demo-4',
-                  description: 'Passagem Aérea Viagem',
-                  totalValue: 1500,
-                  installmentsCount: 6,
-                  startMonth: addMonths(currentMonthStr, 1),
-                  cardId: 'card-demo-2',
-                  createdAt: new Date().toISOString(),
-                },
-              ];
-              
-              setCards(demoCards);
-              setPurchases(demoPurchases);
-              
-              localStorage.setItem('parcelacard_cards', JSON.stringify(demoCards));
-              localStorage.setItem('parcelacard_purchases', JSON.stringify(demoPurchases));
-              
-              await uploadAllDataToCloud(syncId, demoCards, demoPurchases);
-              setCloudStatus('connected');
-            }
-          }
-        } catch (error) {
-          console.error('Erro ao inicializar do Firestore:', error);
-          setCloudStatus('error');
-          // Fallback to local cache
-          const storedCards = localStorage.getItem('parcelacard_cards');
-          const storedPurchases = localStorage.getItem('parcelacard_purchases');
-          if (storedCards && storedPurchases) {
-            setCards(JSON.parse(storedCards));
-            setPurchases(JSON.parse(storedPurchases));
-          }
-        }
-      } else {
-        // Local-only mode
-        const storedCards = localStorage.getItem('parcelacard_cards');
-        const storedPurchases = localStorage.getItem('parcelacard_purchases');
-        
-        if (storedCards && storedPurchases) {
-          setCards(JSON.parse(storedCards));
-          setPurchases(JSON.parse(storedPurchases));
-        } else {
-          const today = new Date();
-          const currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-          
-          const demoCards: Card[] = [
-            {
-              id: 'card-demo-1',
-              name: 'Nubank Roxo',
-              brand: 'mastercard',
-              dueDay: 12,
-              limit: 6000,
-              color: 'from-purple-600 to-indigo-700',
-            },
-            {
-              id: 'card-demo-2',
-              name: 'Inter Laranja',
-              brand: 'visa',
-              dueDay: 17,
-              limit: 4500,
-              color: 'from-orange-500 to-amber-600',
-            },
-          ];
-          
-          const demoPurchases: Purchase[] = [
-            {
-              id: 'purch-demo-1',
-              description: 'Geladeira Frost Free',
-              totalValue: 2400,
-              installmentsCount: 12,
-              startMonth: addMonths(currentMonthStr, -2),
-              cardId: 'card-demo-1',
-              createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-            },
-            {
-              id: 'purch-demo-2',
-              description: 'Notebook de Trabalho',
-              totalValue: 3600,
-              installmentsCount: 10,
-              startMonth: addMonths(currentMonthStr, -1),
-              cardId: 'card-demo-2',
-              createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-            },
-            {
-              id: 'purch-demo-3',
-              description: 'Compras Supermercado',
-              totalValue: 450,
-              installmentsCount: 3,
-              startMonth: currentMonthStr,
-              cardId: 'card-demo-1',
-              createdAt: new Date().toISOString(),
-            },
-            {
-              id: 'purch-demo-4',
-              description: 'Passagem Aérea Viagem',
-              totalValue: 1500,
-              installmentsCount: 6,
-              startMonth: addMonths(currentMonthStr, 1),
-              cardId: 'card-demo-2',
-              createdAt: new Date().toISOString(),
-            },
-          ];
-          
-          setCards(demoCards);
-          setPurchases(demoPurchases);
-          
-          localStorage.setItem('parcelacard_cards', JSON.stringify(demoCards));
-          localStorage.setItem('parcelacard_purchases', JSON.stringify(demoPurchases));
-        }
+          setCards(JSON.parse(localStorage.getItem(cacheKey('cards')) || '[]'));
+          setPurchases(JSON.parse(localStorage.getItem(cacheKey('purchases')) || '[]'));
+        } catch { setCards([]); setPurchases([]); }
       }
     }
-    initData();
-  }, [syncId]);
+    void init();
+    return () => { cancelled = true; };
+  }, [uid]);
 
-  // Save helpers
+  function store(nextCards: Card[], nextPurchases: Purchase[]) {
+    setCards(nextCards); setPurchases(nextPurchases);
+    localStorage.setItem(cacheKey('cards'), JSON.stringify(nextCards));
+    localStorage.setItem(cacheKey('purchases'), JSON.stringify(nextPurchases));
+  }
+
   const saveCards = async (newCards: Card[], cardToSave?: Card) => {
-    setCards(newCards);
-    localStorage.setItem('parcelacard_cards', JSON.stringify(newCards));
-    if (isFirebaseConfigured && cardToSave) {
-      try {
-        await saveCard(syncId, cardToSave);
-      } catch (error) {
-        console.error('Erro ao salvar cartão no Firestore:', error);
-      }
-    }
+    if (cardToSave) await saveMyCard(cardToSave);
+    store(newCards, purchases);
   };
-
   const savePurchases = async (newPurchases: Purchase[], purchaseToSave?: Purchase) => {
-    setPurchases(newPurchases);
-    localStorage.setItem('parcelacard_purchases', JSON.stringify(newPurchases));
-    if (isFirebaseConfigured && purchaseToSave) {
-      try {
-        await savePurchase(syncId, purchaseToSave);
-      } catch (error) {
-        console.error('Erro ao salvar compra no Firestore:', error);
-      }
-    }
+    if (purchaseToSave) await saveMyPurchase(purchaseToSave);
+    store(cards, newPurchases);
   };
-
-  // --- Handlers for Credit Cards ---
   const handleSaveCard = (card: Card) => {
-    const exists = cards.some((c) => c.id === card.id);
-    let updated: Card[];
-    if (exists) {
-      updated = cards.map((c) => (c.id === card.id ? card : c));
-    } else {
-      updated = [...cards, card];
-    }
-    saveCards(updated, card);
-    setShowCardForm(false);
-    setCardToEdit(null);
+    const updated = cards.some(c => c.id === card.id) ? cards.map(c => c.id === card.id ? card : c) : [...cards, card];
+    void saveCards(updated, card).catch(error => { console.error(error); alert('Não foi possível salvar o cartão na nuvem.'); });
+    setShowCardForm(false); setCardToEdit(null);
   };
-
   const handleDeleteCard = async (cardId: string) => {
-    const updatedCards = cards.filter((c) => c.id !== cardId);
-    const updatedPurchases = purchases.filter((p) => p.cardId !== cardId);
-    
-    setCards(updatedCards);
-    setPurchases(updatedPurchases);
-    localStorage.setItem('parcelacard_cards', JSON.stringify(updatedCards));
-    localStorage.setItem('parcelacard_purchases', JSON.stringify(updatedPurchases));
-    
-    if (isFirebaseConfigured) {
-      try {
-        await deleteCard(syncId, cardId);
-        // Cascade delete purchases of this card in Firestore
-        const purchasesToDelete = purchases.filter((p) => p.cardId === cardId);
-        for (const p of purchasesToDelete) {
-          await deletePurchase(syncId, p.id);
-        }
-      } catch (error) {
-        console.error('Erro ao deletar cartão do Firestore:', error);
-      }
-    }
+    if (!window.confirm('Excluir cartão e compras associadas?')) return;
+    try {
+      await deleteMyCard(cardId);
+      for (const purchase of purchases.filter(p => p.cardId === cardId)) await deleteMyPurchase(purchase.id);
+      store(cards.filter(c => c.id !== cardId), purchases.filter(p => p.cardId !== cardId));
+    } catch (error) { console.error(error); alert('Não foi possível excluir o cartão na nuvem.'); }
   };
-
-  const handleEditCardClick = (card: Card) => {
-    setCardToEdit(card);
-    setShowCardForm(true);
-  };
-
-  // --- Handlers for Purchases ---
+  const handleEditCardClick = (card: Card) => { setCardToEdit(card); setShowCardForm(true); };
   const handleSavePurchase = (purchase: Purchase) => {
-    const exists = purchases.some((p) => p.id === purchase.id);
-    let updated: Purchase[];
-    if (exists) {
-      updated = purchases.map((p) => (p.id === purchase.id ? purchase : p));
-    } else {
-      updated = [...purchases, purchase];
-    }
-    savePurchases(updated, purchase);
-    setShowPurchaseForm(false);
-    setPurchaseToEdit(null);
+    const updated = purchases.some(p => p.id === purchase.id) ? purchases.map(p => p.id === purchase.id ? purchase : p) : [...purchases, purchase];
+    void savePurchases(updated, purchase).catch(error => { console.error(error); alert('Não foi possível salvar a compra na nuvem.'); });
+    setShowPurchaseForm(false); setPurchaseToEdit(null);
   };
-
   const handleDeletePurchase = async (purchaseId: string) => {
-    const updatedPurchases = purchases.filter((p) => p.id !== purchaseId);
-    setPurchases(updatedPurchases);
-    localStorage.setItem('parcelacard_purchases', JSON.stringify(updatedPurchases));
-    
-    if (isFirebaseConfigured) {
-      try {
-        await deletePurchase(syncId, purchaseId);
-      } catch (error) {
-        console.error('Erro ao deletar compra do Firestore:', error);
-      }
-    }
+    try {
+      await deleteMyPurchase(purchaseId);
+      store(cards, purchases.filter(p => p.id !== purchaseId));
+    } catch (error) { console.error(error); alert('Não foi possível excluir a compra na nuvem.'); }
   };
-
-  const handleEditPurchaseClick = (purchase: Purchase) => {
-    setPurchaseToEdit(purchase);
-    setShowPurchaseForm(true);
-  };
-
+  const handleEditPurchaseClick = (purchase: Purchase) => { setPurchaseToEdit(purchase); setShowPurchaseForm(true); };
   const handleToggleInstallmentPaid = (purchaseId: string, installmentNumber: number) => {
-    const purchase = purchases.find((p) => p.id === purchaseId);
+    const purchase = purchases.find(p => p.id === purchaseId);
     if (!purchase) return;
-
-    const paidInstallments = purchase.paidInstallments || [];
-    let updatedPaid: number[];
-    if (paidInstallments.includes(installmentNumber)) {
-      updatedPaid = paidInstallments.filter((num) => num !== installmentNumber);
-    } else {
-      updatedPaid = [...paidInstallments, installmentNumber];
-    }
-
-    const updatedPurchase = {
-      ...purchase,
-      paidInstallments: updatedPaid,
-    };
-
-    handleSavePurchase(updatedPurchase);
-  };
-
-  // --- Backup Handlers ---
-  const handleImportData = async (importedData: AppData) => {
-    setCards(importedData.cards);
-    setPurchases(importedData.purchases);
-    localStorage.setItem('parcelacard_cards', JSON.stringify(importedData.cards));
-    localStorage.setItem('parcelacard_purchases', JSON.stringify(importedData.purchases));
-    
-    if (isFirebaseConfigured) {
-      try {
-        await uploadAllDataToCloud(syncId, importedData.cards, importedData.purchases);
-      } catch (error) {
-        console.error('Erro ao subir dados importados para o Firestore:', error);
-      }
-    }
-  };
-
-  const handleUpdateSyncId = (newSyncId: string) => {
-    saveSyncId(newSyncId);
-    setSyncId(newSyncId);
-  };
-
-  const handleForcePushCloud = async () => {
-    await uploadAllDataToCloud(syncId, cards, purchases);
+    const paid = purchase.paidInstallments || [];
+    handleSavePurchase({ ...purchase, paidInstallments: paid.includes(installmentNumber) ? paid.filter(n => n !== installmentNumber) : [...paid, installmentNumber] });
   };
 
   const handleForcePullCloud = async () => {
-    const cloudCards = await loadCards(syncId);
-    const cloudPurchases = await loadPurchases(syncId);
-    
-    setCards(cloudCards);
-    setPurchases(cloudPurchases);
-    localStorage.setItem('parcelacard_cards', JSON.stringify(cloudCards));
-    localStorage.setItem('parcelacard_purchases', JSON.stringify(cloudPurchases));
+    const [remoteCards, remotePurchases] = await Promise.all([loadMyCards(), loadMyPurchases()]);
+    const mergedCards = [...cards.filter(c => !remoteCards.some(r => r.id === c.id)), ...remoteCards];
+    const mergedPurchases = [...purchases.filter(p => !remotePurchases.some(r => r.id === p.id)), ...remotePurchases];
+    store(mergedCards, mergedPurchases);
+  };
+  const handleForcePushCloud = async () => { await uploadMyData(cards, purchases); };
+  const handleImportData = async (importedCards: Card[], importedPurchases: Purchase[]) => {
+    await uploadMyData(importedCards, importedPurchases);
+    store([...cards.filter(c => !importedCards.some(r => r.id === c.id)), ...importedCards],
+      [...purchases.filter(p => !importedPurchases.some(r => r.id === p.id)), ...importedPurchases]);
+  };
+  const handleImportLegacy = async () => {
+    const oldCards = JSON.parse(localStorage.getItem('parcelacard_cards') || '[]') as Card[];
+    const oldPurchases = JSON.parse(localStorage.getItem('parcelacard_purchases') || '[]') as Purchase[];
+    if (!Array.isArray(oldCards) || !Array.isArray(oldPurchases)) throw new Error('Dados locais antigos inválidos.');
+    if (!oldCards.length && !oldPurchases.length) throw new Error('Não há dados antigos neste navegador.');
+    if (!window.confirm(`Copiar ${oldCards.length} cartões e ${oldPurchases.length} compras antigas para esta conta? Os dados antigos permanecerão intactos.`)) return;
+    await handleImportData(oldCards, oldPurchases);
   };
 
   // Calculate invoices for selected month to display card totals
@@ -843,18 +577,14 @@ export default function App() {
           )}
 
           {activeTab === 'sync' && (
-            <ImportExport
+            <AccountSync
               cards={cards}
               purchases={purchases}
-              onImport={handleImportData}
-              syncId={syncId}
               cloudStatus={cloudStatus}
-              onUpdateSyncId={handleUpdateSyncId}
-              onForcePushCloud={handleForcePushCloud}
-              onForcePullCloud={handleForcePullCloud}
-              pinEnabled={pinEnabled}
-              pinCode={pinCode}
-              onUpdatePin={handleUpdatePin}
+              onImportLegacy={handleImportLegacy}
+              onPush={handleForcePushCloud}
+              onPull={handleForcePullCloud}
+              onImportFile={handleImportData}
             />
           )}
         </div>
